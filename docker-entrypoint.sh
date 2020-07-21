@@ -1,10 +1,10 @@
 #!/bin/bash
 set -x
 
-if [ $WEB_HOST ]; then
+if [ $BACKEND ]; then
 BACKEND_TMP=/tmp/_backend.conf
 
-echo -e ${WEB_HOST}|tr ';' '\n' > ${BACKEND_TMP}
+echo -e ${BACKEND}|tr ';' '\n' > ${BACKEND_TMP}
 
 cat /usr/local/etc/haproxy/_global.cfg > /usr/local/etc/haproxy/haproxy.cfg
 cat /usr/local/etc/haproxy/_frontend.cfg >> /usr/local/etc/haproxy/haproxy.cfg
@@ -16,12 +16,24 @@ cat >> /usr/local/etc/haproxy/haproxy.cfg <<END
 
 backend bk-default
     mode   http
-    option forwardfor
+    option httpchk
+    http-check send meth HEAD uri / ver HTTP/1.1 hdr Host localhost
     option http-pretend-keepalive
-    dynamic-cookie-key MYKEY
-    cookie SRVID insert dynamic
+    option http-use-htx
+    option forwardfor
+    compression algo gzip
+    compression type text/html text/plain text/css
+    retry-on all-retryable-errors
+    http-request disable-l7-retry if METH_POST
+    acl cloudy src 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 104.16.0.0/12 108.162.192.0/18 131.0.72.0/22 141.101.64.0/18 162.158.0.0/15 172.64.0.0/13 173.245.48.0/20 188.114.96.0/20 190.93.240.0/20 197.234.240.0/22 198.41.128.0/17 2400:cb00::/32 2405:b500::/32 2606:4700::/32 2803:f800::/32 2c0f:f248::/32 2a06:98c0::/29
+    http-request set-header X-Client-IP %[req.hdr(CF-Connecting-IP)] if cloudy
+    http-request set-header X-Client-IP %[src] if !cloudy
     http-request set-header X-Forwarded-Port %[dst_port]
-    http-request add-header X-Forwarded-Proto https if { ssl_fc }
+    http-request set-header X-Forwarded-Proto https if { ssl_fc }
+    http-request set-header X-Forwarded-For %[src]
+    http-request set-header X-Client-IP %[src]
+    dynamic-cookie-key MYKEY
+    cookie ICID insert dynamic httponly
 END
 
 ORDER=1
